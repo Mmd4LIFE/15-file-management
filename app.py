@@ -4,6 +4,17 @@ import zipfile
 import io
 import os
 
+def clean_value(value):
+    """Clean and standardize values for comparison"""
+    if pd.isna(value):
+        return None
+    
+    # Convert to string and remove any whitespace, special characters
+    value_str = str(value).strip()
+    # Remove common separators from phone numbers and other formatted strings
+    value_str = ''.join(filter(str.isalnum, value_str))
+    return value_str
+
 def read_file(uploaded_file):
     if uploaded_file.name.endswith('.xlsx'):
         return pd.read_excel(uploaded_file)
@@ -18,25 +29,27 @@ def process_files(uploaded_files):
     processed_dfs = {}
     high_priority_values = set()
     
-    # First pass: collect all values from higher priority files
     for priority, file in enumerate(uploaded_files, 1):
         df = read_file(file)
         if df is not None and not df.empty:
             first_col = df.columns[0]
-            if priority == 1:  # Highest priority file
-                high_priority_values.update(df[first_col].values)
+            clean_values = df[first_col].apply(clean_value)
+            
+            if priority == 1:
+                high_priority_values.update(clean_values.dropna())
                 processed_dfs[file.name] = {
                     'df': df.copy(),
                     'priority': priority
                 }
             else:
-                # Remove rows that exist in higher priority files
-                mask = ~df[first_col].isin(high_priority_values)
+                clean_value_series = clean_values.apply(
+                    lambda x: x not in high_priority_values if x is not None else True
+                )
                 processed_dfs[file.name] = {
-                    'df': df[mask].copy(),
+                    'df': df[clean_value_series].copy(),
                     'priority': priority
                 }
-                high_priority_values.update(df[first_col].values)
+                high_priority_values.update(clean_values.dropna())
     
     return processed_dfs
 
